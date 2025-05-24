@@ -10,22 +10,28 @@ from typing import List, Dict, Any, Union
 
 class AmpellInterpreter:
     def __init__(self):
-        self.stack: List[Any] = []
+        self.stacks: Dict[str, List[Any]] = {"main": []}
+        self.current_stack = "main"
         self.variables: Dict[str, Any] = {}
         self.functions: Dict[str, str] = {}
+    
+    @property
+    def stack(self) -> List[Any]:
+        """Get the current active stack"""
+        return self.stacks[self.current_stack]
         
     def tokenize(self, code: str) -> List[str]:
         """Tokenize the Ampell code into individual tokens"""
-        # Remove comments (everything after # that's not an else statement)
-        lines = []
+        # Remove comments (everything after # that's not an else statement or stack switch)
+        lines: List[str] = []
         for line in code.split('\n'):
-            if '#' in line and not line.strip().startswith('#['):
+            if '#' in line and not line.strip().startswith('#[') and not line.strip().startswith('\\['):
                 line = line.split('#')[0]
             lines.append(line)
         
         code = '\n'.join(lines)
         
-        tokens = []
+        tokens: list[str, int] = []
         i = 0
         while i < len(code):
             # Skip whitespace
@@ -33,8 +39,18 @@ class AmpellInterpreter:
                 i += 1
                 continue
             
+            # Stack switch command
+            if code[i:i+2] == '\\[':
+                start = i
+                i += 2
+                while i < len(code) and code[i] != ']':
+                    i += 1
+                if i < len(code):
+                    i += 1  # Include closing bracket
+                tokens.append(code[start:i])
+            
             # Input statement
-            if code[i:i+2] == '^"':
+            elif code[i:i+2] == '^"':
                 end_quote = code.find('"', i+2)
                 tilde_pos = code.find('~', end_quote)
                 var_end = tilde_pos + 1
@@ -144,6 +160,19 @@ class AmpellInterpreter:
     
     def execute_token(self, token: str):
         """Execute a single token"""
+        # Stack switch command
+        if token.startswith('\\[') and token.endswith(']'):
+            stack_name = token[2:-1].strip()
+            if not stack_name:
+                stack_name = "main"
+            
+            # Create stack if it doesn't exist
+            if stack_name not in self.stacks:
+                self.stacks[stack_name] = []
+            
+            self.current_stack = stack_name
+            return
+        
         # Push value onto stack
         if token.startswith('&[') and token.endswith(']'):
             value_str = token[2:-1]
@@ -288,7 +317,7 @@ def main():
     
     # Read the file
     try:
-        with open(filename, 'r', encoding='utf-8') as f:
+            f = open(filename, 'r', encoding='utf-8')
             code = f.read()
     except Exception as e:
         print(f"Error reading file: {e}")
@@ -305,9 +334,12 @@ def main():
         print("-" * 20)
         print("Execution completed.")
         
-        # Show final stack state
-        if interpreter.stack:
-            print(f"Final stack: {interpreter.stack}")
+        # Show final state of all stacks
+        print(f"Current stack: {interpreter.current_stack}")
+        for stack_name, stack_contents in interpreter.stacks.items():
+            if stack_contents:
+                print(f"Stack '{stack_name}': {stack_contents}")
+        
         if interpreter.variables:
             print(f"Variables: {interpreter.variables}")
             
