@@ -32,4 +32,5 @@ Ampell is a simple stack-based programming language with an easy-to-use interpre
 | `>[logic]`          | If second top greater than top, execute logic block |
 | `@functionName[logic]` | Define function named `functionName`            |
 | `functionName:`     | Call function `functionName`                       |
+|`\[stackName]        | Go to or create stackName
 
