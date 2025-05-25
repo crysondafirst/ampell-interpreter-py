@@ -7,7 +7,7 @@ Run this file and it will ask for the .ampl filename
 import re
 import os
 from typing import List, Dict, Any, Union
-
+sys.set_int_max_str_digits(10_000_000)
 class AmpellInterpreter:
     def __init__(self):
         self.stacks: Dict[str, List[Any]] = {"main": []}
@@ -307,7 +307,6 @@ class AmpellInterpreter:
             i += 1
 
 def main():
-    sys.set_int_max_str_digits(100000)
     # Ask for filename
     filename = input("Enter the a file with valid Ampell code: ")
     
