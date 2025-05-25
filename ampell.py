@@ -307,6 +307,7 @@ class AmpellInterpreter:
             i += 1
 
 def main():
+    sys.set_int_max_str_digits(100000)
     # Ask for filename
     filename = input("Enter the a file with valid Ampell code: ")
     
