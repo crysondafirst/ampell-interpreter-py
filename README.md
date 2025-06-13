@@ -118,6 +118,13 @@ Speed improvement, hello world took:
 Hello, world!
 That took 0.0010 seconds.
 ```
+Case 1 took:
+```
+Execution took: 0.0120s
+```
+^^^ This was counting down from 100, without ```^"question"~var&[n]``` and instead just ```&[100]```.
+
+
 I am able to get that by changing:
 ```
     def execute(self, code: str):
@@ -131,6 +138,6 @@ I am able to get that by changing:
         self.visit(ast)
         end_time = time.time()
         elapsed_time = end_time - start_time
-        print(f"That took {elapsed_time:.4f} seconds. Boom!")
+        print(f"Execution took: {elapsed_time:.4f}s")
 ```
 With time tracking debug.
