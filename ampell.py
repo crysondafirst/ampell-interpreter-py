@@ -22,7 +22,7 @@ performance, reliability, and maintainability.
     methods traverse the pre-parsed AST, which is far more efficient than
     re-interpreting strings of code on the fly.
 
--- FIX 2024-06-13 --
+-- FIX 2025-06-13 --
 * REMOVED: The recursive regex pattern `(?R)` which caused a `re.error` as it is not
     supported by Python's standard `re` module.
 * REFACTORED: The Lexer and Parser. The Lexer now produces simpler tokens for block
@@ -329,23 +329,27 @@ class AmpellInterpreter:
         if condition_met:
             for statement in node.body:
                 self.visit(statement)
-
     def visit_OperatorNode(self, node: OperatorNode):
         op = node.op
-        if op == '%':
+        
+        # Single-operand operators remain the same.
+        if op == '%': # Pop
             if self.stack: self.stack.pop()
             return
-        elif op == '$':
+        elif op == '$': # Print (peek)
             if self.stack: print(self.stack[-1])
             return
 
-        if len(self.stack) < 2: return
-        # --- THE FIX IS HERE ---
-        # We now POP the operands from the stack, consuming them.
-        b = self.stack.pop()
-        a = self.stack.pop()
+        # For arithmetic, we need two operands.
+        if len(self.stack) < 2:
+            print(f"Error: Not enough operands for operator '{op}'")
+            return
+        # We now PEEK at the operands, leaving them on the stack.
+        b = self.stack[-1]
+        a = self.stack[-2]
 
-        # We compute the result and push ONLY the result back.
+        # We compute the result and push it onto the stack, leaving the
+        # original operands in place.
         if op == '+':
             self.stack.append(a + b)
         elif op in ('-', '−'):
@@ -355,12 +359,8 @@ class AmpellInterpreter:
         elif op in ('/', '÷'):
             if b == 0:
                 print("Error: Division by zero")
-                # On error, we should restore the stack to its previous state.
-                self.stack.append(a)
-                self.stack.append(b)
             else:
                 self.stack.append(a / b)
-
 # --- UNCHANGED: Main Function ---
 def main():
     """Main function to run the interpreter."""
