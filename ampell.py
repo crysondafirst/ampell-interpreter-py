@@ -335,15 +335,26 @@ class AmpellInterpreter:
             return
 
         if len(self.stack) < 2: return
-        b = self.stack[-1]
-        a = self.stack[-2]
+        # --- THE FIX IS HERE ---
+        # We now POP the operands from the stack, consuming them.
+        b = self.stack.pop()
+        a = self.stack.pop()
 
-        if op == '+': self.stack.append(a + b)
-        elif op in ('-', '−'): self.stack.append(a - b)
-        elif op in ('*', '×'): self.stack.append(a * b)
+        # We compute the result and push ONLY the result back.
+        if op == '+':
+            self.stack.append(a + b)
+        elif op in ('-', '−'):
+            self.stack.append(a - b)
+        elif op in ('*', '×'):
+            self.stack.append(a * b)
         elif op in ('/', '÷'):
-            if b == 0: print("Error: Division by zero")
-            else: self.stack.append(a / b)
+            if b == 0:
+                print("Error: Division by zero")
+                # On error, we should restore the stack to its previous state.
+                self.stack.append(a)
+                self.stack.append(b)
+            else:
+                self.stack.append(a / b)
 
 # --- UNCHANGED: Main Function ---
 def main():
