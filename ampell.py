@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Ampell Programming Language Interpreter
 Run this file and it will ask for the .ampl filename
@@ -21,8 +22,14 @@ performance, reliability, and maintainability.
     methods traverse the pre-parsed AST, which is far more efficient than
     re-interpreting strings of code on the fly.
 
-The public-facing behavior of the interpreter remains the same to ensure
-compatibility.
+-- FIX 2024-06-13 --
+* REMOVED: The recursive regex pattern `(?R)` which caused a `re.error` as it is not
+    supported by Python's standard `re` module.
+* REFACTORED: The Lexer and Parser. The Lexer now produces simpler tokens for block
+    constructs (e.g., `FUNC_DEF_INTRO`, `L_BRACKET`).
+* ENHANCED: The Parser is now a proper recursive descent parser, responsible for
+    building nested structures by tracking `L_BRACKET` and `R_BRACKET` tokens. This is
+    a more robust and compatible method for handling nested code blocks.
 """
 
 import re
@@ -31,7 +38,7 @@ import sys
 from typing import List, Dict, Any, Union
 
 # We set a high limit for int-to-string conversions, which is good practice.
-sys.setrecursionlimit(2000) # Increased recursion limit for deep ASTs
+sys.setrecursionlimit(2000)
 sys.set_int_max_str_digits(10_000_000)
 
 # --- NEW: Abstract Syntax Tree (AST) Node Definitions ---
@@ -47,7 +54,7 @@ class ProgramNode(ASTNode):
         self.statements = statements
 
 class PushNode(ASTNode):
-    """Represents pushing a value onto the stack: &[value]"""
+    r"""Represents pushing a value onto the stack: &[value]"""
     def __init__(self, value_str: str):
         self.value_str = value_str
 
@@ -57,42 +64,42 @@ class OperatorNode(ASTNode):
         self.op = op
 
 class AssignNode(ASTNode):
-    """Represents assigning the top of the stack to a variable: >>var"""
+    r"""Represents assigning the top of the stack to a variable: >>var"""
     def __init__(self, var_name: str):
         self.var_name = var_name
 
 class InputNode(ASTNode):
-    """Represents getting user input: ^"prompt"~var"""
+    r"""Represents getting user input: ^"prompt"~var"""
     def __init__(self, prompt: str, var_name: str):
         self.prompt = prompt
         self.var_name = var_name
 
 class ConditionalNode(ASTNode):
-    """Represents a conditional block: =[...], ![...], etc."""
+    r"""Represents a conditional block: =[...], ![...], etc."""
     def __init__(self, condition_type: str, body: List[ASTNode]):
         self.condition_type = condition_type
         self.body = body
 
 class FunctionDefNode(ASTNode):
-    """Represents a function definition: @name[...]"""
+    r"""Represents a function definition: @name[...]"""
     def __init__(self, name: str, body: List[ASTNode]):
         self.name = name
         self.body = body
 
 class FunctionCallNode(ASTNode):
-    """Represents a function call: name:"""
+    r"""Represents a function call: name:"""
     def __init__(self, name: str):
         self.name = name
 
 class StackSwitchNode(ASTNode):
-    """Represents switching the active stack: \[stack_name]"""
+    r"""Represents switching the active stack: \[stack_name]"""
     def __init__(self, stack_name: str):
         self.stack_name = stack_name
 
 
-# --- NEW: The Parser ---
+# --- NEW & REFACTORED: The Parser ---
 # The parser's job is to take the flat list of tokens from the lexer
-# and build the hierarchical AST.
+# and build the hierarchical AST. It now correctly handles nested structures.
 class AmpellParser:
     def __init__(self, tokens: List[Dict[str, Any]]):
         self.tokens = tokens
@@ -107,18 +114,55 @@ class AmpellParser:
     def parse(self) -> ProgramNode:
         """Parses all tokens into a complete Program AST."""
         statements = []
-        while self.get_current_token() is not None:
+        # We parse statements until we run out of tokens or hit a closing bracket
+        # (which is handled by a recursive call).
+        while self.get_current_token() is not None and self.get_current_token()['type'] != 'R_BRACKET':
             statements.append(self.parse_statement())
         return ProgramNode(statements)
 
     def parse_statement(self) -> ASTNode:
         """Parses a single statement based on the current token type."""
         token = self.get_current_token()
-        self.advance()  # Consume the token for the next iteration
-
         kind = token['type']
         value = token['value']
 
+        if kind == 'FUNC_DEF_INTRO':
+            self.advance() # Consume intro token '@func'
+            func_name = value[1:]
+            
+            # Expect a left bracket
+            if not self.get_current_token() or self.get_current_token()['type'] != 'L_BRACKET':
+                raise SyntaxError("Expected '[' after function definition")
+            self.advance() # Consume '['
+            
+            # Recursively parse the body
+            body_ast = self.parse().statements
+            
+            # Expect a right bracket
+            if not self.get_current_token() or self.get_current_token()['type'] != 'R_BRACKET':
+                raise SyntaxError(f"Unclosed function definition for '{func_name}'")
+            self.advance() # Consume ']'
+            return FunctionDefNode(func_name, body_ast)
+
+        if kind == 'COND_OP':
+            self.advance() # Consume operator token '=', '>', etc.
+            
+            # Expect a left bracket
+            if not self.get_current_token() or self.get_current_token()['type'] != 'L_BRACKET':
+                raise SyntaxError(f"Expected '[' after conditional operator '{value}'")
+            self.advance() # Consume '['
+            
+            # Recursively parse the body
+            body_ast = self.parse().statements
+
+            # Expect a right bracket
+            if not self.get_current_token() or self.get_current_token()['type'] != 'R_BRACKET':
+                 raise SyntaxError(f"Unclosed conditional block starting with '{value}'")
+            self.advance() # Consume ']'
+            return ConditionalNode(value, body_ast)
+
+        # For simple, non-nested tokens:
+        self.advance() # Consume the current token
         if kind == 'PUSH':
             return PushNode(value[2:-1])
         elif kind == 'OPERATOR':
@@ -134,24 +178,7 @@ class AmpellParser:
             prompt = parts[0][:-1]
             var_name = parts[1]
             return InputNode(prompt, var_name)
-        elif kind in ('CONDITIONAL', 'FUNC_DEF'):
-            # For blocks, we recursively parse the inner content.
-            if kind == 'CONDITIONAL':
-                condition_type = value[0]
-                inner_logic_str = value[2:-1]
-                # Note: A more advanced parser could avoid re-tokenizing, but this
-                # approach is robust and keeps the parser logic simpler.
-                inner_tokens = AmpellInterpreter.tokenize(inner_logic_str)
-                body_ast = AmpellParser(inner_tokens).parse().statements
-                return ConditionalNode(condition_type, body_ast)
-            else: # FUNC_DEF
-                name_end = value.index('[')
-                func_name = value[1:name_end]
-                inner_logic_str = value[name_end+1:-1]
-                inner_tokens = AmpellInterpreter.tokenize(inner_logic_str)
-                body_ast = AmpellParser(inner_tokens).parse().statements
-                return FunctionDefNode(func_name, body_ast)
-
+            
         raise ValueError(f"Unexpected token during parsing: {token}")
 
 
@@ -160,7 +187,6 @@ class AmpellInterpreter:
         self.stacks: Dict[str, List[Any]] = {"main": []}
         self.current_stack = "main"
         self.variables: Dict[str, Any] = {}
-        # NOTE: Functions now store a list of pre-parsed AST nodes, not a raw string.
         self.functions: Dict[str, List[ASTNode]] = {}
 
     @property
@@ -174,27 +200,27 @@ class AmpellInterpreter:
     def tokenize(code: str) -> List[Dict[str, Any]]:
         """
         Tokenize the Ampell code using a regex-based lexer.
-        This is significantly more robust and faster than manual string iteration.
         """
-        # We define the grammar of our language as a series of named regex patterns.
-        # Order matters: more specific patterns (e.g., '>>') must come before
-        # less specific ones (e.g., '>').
-        # NOTE: The recursive pattern `(?R)` correctly handles balanced nested brackets.
+        # NOTE: The grammar has been simplified. We no longer try to match whole
+        # nested blocks. Instead, we tokenize the opening and closing parts,
+        # and the parser handles the nesting logic.
         token_specification = [
+            ('PUSH',          r'&\[[^\]]*\]'),
             ('STACK_SWITCH',  r'\\\[[^\]]*\]'),
             ('INPUT',         r'\^\"[^\"]*\"~\w+'),
-            ('FUNC_DEF',      r'@[a-zA-Z_][a-zA-Z0-9_]*\[(?:[^\[\]]|\[(?R)\])*\]'),
-            ('CONDITIONAL',   r'[=!<>]\[(?:[^\[\]]|\[(?R)\])*\]'),
-            ('PUSH',          r'&\[[^\]]*\]'),
             ('ASSIGN',        r'>>[a-zA-Z_]\w*'),
+            ('FUNC_DEF_INTRO',r'@[a-zA-Z_]\w*'),
             ('FUNC_CALL',     r'[a-zA-Z_]\w*:'),
+            ('COND_OP',       r'[=!<>]'), # NOTE: Simplified
+            ('L_BRACKET',     r'\['),     # NOTE: New token
+            ('R_BRACKET',     r'\]'),     # NOTE: New token
             ('OPERATOR',      r'[%\$+\-×÷*/]'),
             ('WHITESPACE',    r'\s+'),
             ('COMMENT',       r'#[^\[\n].*'),
             ('MISMATCH',      r'.'),
         ]
 
-        tok_regex = '|'.join('(?P<%s>%s)' % pair for pair in token_specification)
+        tok_regex = '|'.join(f'(?P<{pair[0]}>{pair[1]})' for pair in token_specification)
         tokens = []
         line_num = 1
         line_start = 0
@@ -205,7 +231,7 @@ class AmpellInterpreter:
             column = mo.start() - line_start
 
             if kind in ('WHITESPACE', 'COMMENT'):
-                pass  # We simply ignore these tokens.
+                pass
             elif kind == 'MISMATCH':
                 raise RuntimeError(f'Syntax Error: Unexpected character {value!r} on line {line_num}:{column}')
             else:
@@ -230,22 +256,16 @@ class AmpellInterpreter:
                 return value_str[1:-1]
             return value_str
 
-    # --- REFACTORED: Main Execution Pipeline & AST Walker ---
-    # The old execute methods are gone, replaced by this new three-stage pipeline.
     def execute(self, code: str):
         """
         Executes Ampell code through the Lexer -> Parser -> Walker pipeline.
         """
-        # Stage 1: Lexing (Code String -> Tokens)
         tokens = self.tokenize(code)
-
-        # Stage 2: Parsing (Tokens -> AST)
         parser = AmpellParser(tokens)
         ast = parser.parse()
-
-        # Stage 3: Execution (Walking the AST)
         self.visit(ast)
 
+    # --- REFACTORED: AST Walker (Visitor) ---
     def visit(self, node: ASTNode):
         """
         The core of the AST Walker. It uses the Visitor pattern to dispatch
@@ -281,12 +301,10 @@ class AmpellInterpreter:
         self.current_stack = stack_name
 
     def visit_FunctionDefNode(self, node: FunctionDefNode):
-        # We store the pre-parsed list of AST nodes directly.
         self.functions[node.name] = node.body
 
     def visit_FunctionCallNode(self, node: FunctionCallNode):
         if node.name in self.functions:
-            # We execute the pre-parsed body. This is extremely fast.
             for statement in self.functions[node.name]:
                 self.visit(statement)
         else:
@@ -304,22 +322,19 @@ class AmpellInterpreter:
         elif node.condition_type == '>' and a > b: condition_met = True
 
         if condition_met:
-            # We don't re-parse. We just visit the children nodes from the AST.
             for statement in node.body:
                 self.visit(statement)
 
     def visit_OperatorNode(self, node: OperatorNode):
         op = node.op
-        if op == '%': # Pop
+        if op == '%':
             if self.stack: self.stack.pop()
             return
-        elif op == '$': # Print
+        elif op == '$':
             if self.stack: print(self.stack[-1])
             return
 
-        # For arithmetic, we need two operands.
         if len(self.stack) < 2: return
-
         b = self.stack[-1]
         a = self.stack[-2]
 
@@ -327,15 +342,10 @@ class AmpellInterpreter:
         elif op in ('-', '−'): self.stack.append(a - b)
         elif op in ('*', '×'): self.stack.append(a * b)
         elif op in ('/', '÷'):
-            if b == 0:
-                print("Error: Division by zero")
-            else:
-                self.stack.append(a / b)
-
+            if b == 0: print("Error: Division by zero")
+            else: self.stack.append(a / b)
 
 # --- UNCHANGED: Main Function ---
-# This part remains the same to ensure the program's entry point and
-# user interaction are compatible with the original version.
 def main():
     """Main function to run the interpreter."""
     filename = input("Enter a file with valid Ampell code: ")
@@ -356,9 +366,7 @@ def main():
     try:
         print(f"\nExecuting {filename}...")
         print("-" * 20)
-
-        interpreter.execute(code) # This one call now runs the whole pipeline.
-
+        interpreter.execute(code)
         print("-" * 20)
         print("Execution completed.")
 
