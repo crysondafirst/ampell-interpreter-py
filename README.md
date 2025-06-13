@@ -111,3 +111,26 @@ countdown:      # Initial call to start the loop.
 | `@functionName[logic]` | Define function named `functionName`           |
 | `functionName:`     | Call function `functionName`                      |
 |`\[stackName]        | Go to or create stackName                         |
+
+## Notes
+Speed improvement, hello world took:
+```
+Hello, world!
+That took 0.0010 seconds.
+```
+I am able to get that by changing:
+```
+    def execute(self, code: str):
+        """
+        Executes Ampell code through the Lexer -> Parser -> Walker pipeline.
+        """
+        start_time = time.time()
+        tokens = self.tokenize(code)
+        parser = AmpellParser(tokens)
+        ast = parser.parse()
+        self.visit(ast)
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print(f"That took {elapsed_time:.4f} seconds. Boom!")
+```
+With time tracking debug.
