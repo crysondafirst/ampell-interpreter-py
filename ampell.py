@@ -36,6 +36,7 @@ import re
 import os
 import sys
 from typing import List, Dict, Any, Union
+import time # For tracking execution time
 
 # We set a high limit for int-to-string conversions, which is good practice.
 sys.setrecursionlimit(2000)
@@ -260,10 +261,14 @@ class AmpellInterpreter:
         """
         Executes Ampell code through the Lexer -> Parser -> Walker pipeline.
         """
+        start = time.time()
         tokens = self.tokenize(code)
         parser = AmpellParser(tokens)
         ast = parser.parse()
         self.visit(ast)
+        end = time.time()
+        elapsed = end - start
+        print(f"Execution took: {elapsed:.4f}s")
 
     # --- REFACTORED: AST Walker (Visitor) ---
     def visit(self, node: ASTNode):
@@ -393,8 +398,6 @@ def main():
         print(f"Runtime error: {e}")
         import traceback
         traceback.print_exc()
-
-    input("\nPress Enter to exit...")
 
 if __name__ == "__main__":
     main()
