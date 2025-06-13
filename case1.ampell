@@ -4,3 +4,4 @@
 # Works.
 # ^"i need number"~a&[a]&[0]@loop[$loop:]=[$]![%loop:]
 # ^ Was discarded because it had syntax errors that were incompatible to the performance changes.
+# ^ Changes to docs.. might be needed.
