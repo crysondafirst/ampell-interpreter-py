@@ -110,7 +110,7 @@ countdown:      # Initial call to start the loop.
 | `>[logic]`          | If second top greater than top, execute logic block |
 | `@functionName[logic]` | Define function named `functionName`           |
 | `functionName:`     | Call function `functionName`                      |
-|`\[stackName]        | Go to or create stackName                         |
+|`\[stackName]`         | Go to or create stackName                         |
 
 ## Notes
 Speed improvement, hello world took:
