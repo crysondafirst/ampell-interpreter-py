@@ -48,10 +48,10 @@ Push two numbers, add them, and print the result.
 # Pushes 15, then 7. The stack is [15, 7]
 &[15] &[7]
 
-# The '-' operator pops 7 and 15, calculates 15-7=8, and pushes 8.
+# The '-' operator does peeks at 7 and 15, calculates 15-7=8, and pushes 8.
 -
 
-# The stack is now [8]. The '$' prints the top.
+# The stack is now [15, 7, 8]. The '$' prints the top.
 $
 # Output: 8
 ```
@@ -80,8 +80,8 @@ A more advanced example demonstrating functions, recursion, and stack management
 @countdown[
     $           # Print the current number on top of the stack.
     &[1]        # Push 1 to subtract with.
-    -           # Destructive subtract. Stack now holds (n-1).
-    &[0]        # Push 0 for comparison. Stack is now [(n-1), 0].
+    -           # Nondestructive subtract. Stack now holds n, 1, (n-1).
+    &[0]        # Push 0 for comparison. Stack is now [n, 1, (n-1), 0].
     >           # Peek and compare if (n-1) > 0.
     [           # If the condition is true, execute this block:
       %         # Pop the 0 used for comparison to clean the stack.
